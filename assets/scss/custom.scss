@@ -1,3 +1,10 @@
 /*
     You can add your own custom styles here.
 */
+
+/* 使代码块中的长行自动换行 */
+pre code {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
