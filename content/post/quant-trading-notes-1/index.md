@@ -1,8 +1,15 @@
 ---
-title: "量化交易笔记：1"
-date: 2026-05-07
-tags: ["AI协作", "加密货币", "量化交易", "Qlib"]
-categories: ["量化交易"]
+title: 量化交易笔记：1
+description: 量化交易笔记第一篇，基于Qlib框架的加密货币短线交易学习笔记
+slug: quant-trading-notes-1
+date: 2026-05-07T01:14:00+08:00
+categories:
+  - 量化交易
+tags:
+  - AI协作
+  - 加密货币
+  - 量化交易
+  - Qlib
 ---
 
 # 量化交易笔记 1：做加密货币交易的技术选择
