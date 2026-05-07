@@ -1,0 +1,785 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>闲云记</title><link>https://blog.oic.im/</link><description>Recent content on 闲云记</description><generator>Hugo -- gohugo.io</generator><language>zh-cn</language><lastBuildDate>Thu, 07 May 2026 01:14:00 +0800</lastBuildDate><atom:link href="https://blog.oic.im/index.xml" rel="self" type="application/rss+xml"/><item><title>量化交易笔记：1</title><link>https://blog.oic.im/p/quant-trading-notes-1/</link><pubDate>Thu, 07 May 2026 01:14:00 +0800</pubDate><guid>https://blog.oic.im/p/quant-trading-notes-1/</guid><description>&lt;h1 id="量化交易笔记-1做加密货币交易的技术选择"&gt;量化交易笔记 1：做加密货币交易的技术选择
+&lt;/h1&gt;&lt;blockquote&gt;
+&lt;p&gt;基于 Qlib (Microsoft) 框架，面向加密货币短线交易&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;hr&gt;
+&lt;h2 id="一qlib-项目结构速览"&gt;一、Qlib 项目结构速览
+&lt;/h2&gt;&lt;h3 id="examples-目录分类"&gt;examples/ 目录分类
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;目录&lt;/th&gt;
+&lt;th&gt;类型&lt;/th&gt;
+&lt;th&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;benchmarks/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;模型对比实验&lt;/td&gt;
+&lt;td&gt;LightGBM、LSTM、GRU、Transformer、TRA、HIST 等，统一数据集横向对比 IC/Sharpe&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;benchmarks_dynamic/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;动态市场适应&lt;/td&gt;
+&lt;td&gt;测试模型在市场分布偏移时的表现（DDG-DA 等）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;highfreq/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;高频特征工程&lt;/td&gt;
+&lt;td&gt;日内/tick 级别自定义算子、Handler、Processor&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;nested_decision_execution/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;嵌套执行器&lt;/td&gt;
+&lt;td&gt;日频策略 + 分钟频执行同时模拟&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;rl_order_execution/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;强化学习执行&lt;/td&gt;
+&lt;td&gt;用 RL 做订单拆单（TWAP/VWAP 类问题）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;online_srv/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;在线服务&lt;/td&gt;
+&lt;td&gt;模型上线后的滚动再训练、在线预测更新&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;portfolio/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;组合管理&lt;/td&gt;
+&lt;td&gt;增强指数配置示例&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;model_rolling/&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;滚动更新&lt;/td&gt;
+&lt;td&gt;walk-forward 框架&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="二重要概念区分"&gt;二、重要概念区分
+&lt;/h2&gt;&lt;h3 id="alpha158-是特征集不是模型"&gt;Alpha158 是特征集，不是模型
+&lt;/h3&gt;&lt;p&gt;这是最容易混淆的地方：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;层次&lt;/th&gt;
+&lt;th&gt;例子&lt;/th&gt;
+&lt;th&gt;作用&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;特征集（Handler）&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Alpha158、Alpha360&lt;/td&gt;
+&lt;td&gt;决定用什么因子作为模型输入&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;预测模型&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;XGBoost、LightGBM、LSTM&amp;hellip;&lt;/td&gt;
+&lt;td&gt;决定怎么从特征预测收益&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;两者是正交关系，可以任意组合：LightGBM + Alpha158、LightGBM + Alpha360 都是合法的。&lt;/p&gt;
+&lt;h3 id="alpha158-的-158-个因子构成"&gt;Alpha158 的 158 个因子构成
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;span class="lnt"&gt;6
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;9 个 K 线形态因子（KMID, KLEN, KMID2, KUP, KUP2, KLOW, KLOW2, KSFT, KSFT2）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;4 个原始价格因子（OPEN/HIGH/LOW/VWAP 各 1 个，window=0）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;30 个 rolling 指标 × 5 个窗口（5/10/20/30/60天）= 145 个
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 包括：ROC, MA, STD, BETA, RSQR, RESI, MAX, MIN, QTLU, QTLD, RSV,
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; IMAX, IMIN, IMXD, CORR, CORD, CNTP, CNTN, CNTD,
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; SUMP, SUMN, SUMD, VMA, VSTD, WVMA, VSUMP, VSUMN, VSUMD
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;本质是&lt;strong&gt;同一套技术指标在 5 个时间窗口的展开&lt;/strong&gt;，存在大量冗余。&lt;/p&gt;
+&lt;h3 id="alpha158-vs-alpha360-的本质差异"&gt;Alpha158 vs Alpha360 的本质差异
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;&lt;/th&gt;
+&lt;th&gt;Alpha158&lt;/th&gt;
+&lt;th&gt;Alpha360&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;内容&lt;/td&gt;
+&lt;td&gt;人工设计的 rolling 因子&lt;/td&gt;
+&lt;td&gt;原始 OHLCV × 60 天 = 360 个特征&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;适合模型&lt;/td&gt;
+&lt;td&gt;树模型（LightGBM/XGBoost）&lt;/td&gt;
+&lt;td&gt;时序模型（LSTM/GRU）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;人工先验&lt;/td&gt;
+&lt;td&gt;多&lt;/td&gt;
+&lt;td&gt;少&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;竞争壁垒&lt;/td&gt;
+&lt;td&gt;低（用的人多）&lt;/td&gt;
+&lt;td&gt;相对较高&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="benchmark-表关键数据csi300alpha158"&gt;benchmark 表关键数据（CSI300，Alpha158）
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模型&lt;/th&gt;
+&lt;th&gt;年化收益&lt;/th&gt;
+&lt;th&gt;IR&lt;/th&gt;
+&lt;th&gt;特点&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;DoubleEnsemble&lt;/td&gt;
+&lt;td&gt;11.6%&lt;/td&gt;
+&lt;td&gt;1.34&lt;/td&gt;
+&lt;td&gt;最强，基于 LightGBM 集成&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;LightGBM&lt;/td&gt;
+&lt;td&gt;9.0%&lt;/td&gt;
+&lt;td&gt;1.02&lt;/td&gt;
+&lt;td&gt;稳定，门槛低，推荐起点&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;XGBoost&lt;/td&gt;
+&lt;td&gt;7.8%&lt;/td&gt;
+&lt;td&gt;0.91&lt;/td&gt;
+&lt;td&gt;略弱于 LightGBM&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;MLP&lt;/td&gt;
+&lt;td&gt;8.9%&lt;/td&gt;
+&lt;td&gt;1.14&lt;/td&gt;
+&lt;td&gt;神经网络里性价比高&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="三加密货币短线交易指南"&gt;三、加密货币短线交易指南
+&lt;/h2&gt;&lt;h3 id="时间级别选择"&gt;时间级别选择
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;级别&lt;/th&gt;
+&lt;th&gt;持仓时长&lt;/th&gt;
+&lt;th&gt;门槛&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;高频做市&lt;/td&gt;
+&lt;td&gt;毫秒~秒&lt;/td&gt;
+&lt;td&gt;需要 co-location，极高门槛&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;日内趋势/反转&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;分钟~小时&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;推荐起点&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;隔夜短摆&lt;/td&gt;
+&lt;td&gt;小时~天&lt;/td&gt;
+&lt;td&gt;最容易入手&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="订单簿核心信号你的直觉是对的"&gt;订单簿核心信号（你的直觉是对的）
+&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;1. Order Book Imbalance (OBI)&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;OBI = (bid_volume - ask_volume) / (bid_volume + ask_volume)
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;OBI &amp;gt; 0 → 买压大 → 价格倾向上涨
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;2. Microprice（比 mid-price 更精确）&lt;/strong&gt;&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;microprice = (ask_price × bid_vol + bid_price × ask_vol) / (bid_vol + ask_vol)
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;通常领先成交价几秒到几十秒。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;3. Trade Flow Imbalance&lt;/strong&gt;
+主动买入量 vs 主动卖出量的比值，反映&amp;quot;聪明钱&amp;quot;方向。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;4. Order Book Depth Gradient&lt;/strong&gt;
+前 5 档挂单分布——上方挂单稀薄说明阻力小，易突破。&lt;/p&gt;
+&lt;h3 id="加密市场独有因子"&gt;加密市场独有因子
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;因子&lt;/th&gt;
+&lt;th&gt;来源&lt;/th&gt;
+&lt;th&gt;信号含义&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;资金费率（Funding Rate）&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;永续合约，每 8 小时结算&lt;/td&gt;
+&lt;td&gt;持续为正 → 多头拥挤 → 反转信号&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;期现价差（Basis）&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;现货 vs 期货&lt;/td&gt;
+&lt;td&gt;情绪溢价指标&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;清算数据（Liquidation）&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Binance/Bybit API&lt;/td&gt;
+&lt;td&gt;大量多单清算 → 短暂超跌后反弹&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;鲸鱼大单流&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;超阈值成交&lt;/td&gt;
+&lt;td&gt;机构行为有延续性&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="模型选择逻辑"&gt;模型选择逻辑
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;span class="lnt"&gt;6
+&lt;/span&gt;&lt;span class="lnt"&gt;7
+&lt;/span&gt;&lt;span class="lnt"&gt;8
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;数据是表格特征（OBI、资金费率、技术指标...）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → LightGBM / XGBoost ← 最稳，先从这里开始
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;数据是时间序列（订单簿逐帧快照）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → LSTM / Transformer
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;数据是订单流事件序列（每一笔成交）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → TCN 或专门的 LOB 模型（DeepLOB 等）
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;hr&gt;
+&lt;h2 id="四工具选择自己写-vs-qlib-vs-rd-agent"&gt;四、工具选择：自己写 vs Qlib vs RD-Agent
+&lt;/h2&gt;&lt;h3 id="三者的定位"&gt;三者的定位
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;自己写代码 → 灵活，但要从零造轮子
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ↓
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;Qlib → 给你造好了 ML 量化的标准流水线
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ↓
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;RD-Agent → 用 LLM 自动帮你跑 Qlib、挖因子、调模型
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;它们是叠加关系，不是竞争关系。&lt;/strong&gt;&lt;/p&gt;
+&lt;h3 id="qlib-真正节省时间的地方"&gt;Qlib 真正节省时间的地方
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模块&lt;/th&gt;
+&lt;th&gt;价值&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;回测防护&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;Look-ahead bias 防护、Point-in-Time 数据、手续费/滑点模型内置&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;实验管理&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;MLflow 封装，每次实验的参数、指标、模型文件全部自动归档&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;标准评估报告&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;IC/ICIR、年化收益、最大回撤、Sharpe，一行代码出完整报告&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;滚动训练&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;walk-forward 框架，模型每月重训，在线预测自动更新&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="qlib-的短板对加密短线"&gt;Qlib 的短板（对加密短线）
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;短板&lt;/th&gt;
+&lt;th&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;分钟级以下支持弱&lt;/td&gt;
+&lt;td&gt;订单簿、逐笔成交没有标准化支持&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;加密支持有限&lt;/td&gt;
+&lt;td&gt;只有 CoinGecko 日线，没有 Binance 分钟线接口&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;因子库是 A 股视角&lt;/td&gt;
+&lt;td&gt;rolling 窗口和加密市场 24h 不休盘不匹配&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="rd-agent-是什么"&gt;RD-Agent 是什么
+&lt;/h3&gt;&lt;p&gt;微软在 Qlib 之上造的 &lt;strong&gt;LLM 自动化研究员&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;自动读论文、提取因子公式、生成 Qlib 表达式&lt;/li&gt;
+&lt;li&gt;自动跑实验、看 IC、决定是否保留因子&lt;/li&gt;
+&lt;li&gt;前提：你已有稳定的 Qlib 流水线。它是加速器，不是替代品。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="针对加密短线的工具分工建议"&gt;针对加密短线的工具分工建议
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;模块&lt;/th&gt;
+&lt;th&gt;用什么&lt;/th&gt;
+&lt;th&gt;理由&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;数据获取&lt;/td&gt;
+&lt;td&gt;自己写（Binance API）&lt;/td&gt;
+&lt;td&gt;Qlib 没有现成支持&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;特征工程&lt;/td&gt;
+&lt;td&gt;自己写（pandas/numpy）&lt;/td&gt;
+&lt;td&gt;订单簿特征 Qlib 没有&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;模型训练&lt;/td&gt;
+&lt;td&gt;LightGBM 直接调用&lt;/td&gt;
+&lt;td&gt;不需要 Qlib 包装&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;回测&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;用 Qlib&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;手续费模型、防 look-ahead，省大量时间&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;实验记录&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;用 Qlib（MLflow）&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;跑 100 次实验时不会乱&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;因子挖掘（后期）&lt;/td&gt;
+&lt;td&gt;RD-Agent&lt;/td&gt;
+&lt;td&gt;有稳定流水线后再上&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="五完整实践路线图"&gt;五、完整实践路线图
+&lt;/h2&gt;&lt;h3 id="分钟级加密短线推荐路径"&gt;分钟级加密短线（推荐路径）
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt; 1
+&lt;/span&gt;&lt;span class="lnt"&gt; 2
+&lt;/span&gt;&lt;span class="lnt"&gt; 3
+&lt;/span&gt;&lt;span class="lnt"&gt; 4
+&lt;/span&gt;&lt;span class="lnt"&gt; 5
+&lt;/span&gt;&lt;span class="lnt"&gt; 6
+&lt;/span&gt;&lt;span class="lnt"&gt; 7
+&lt;/span&gt;&lt;span class="lnt"&gt; 8
+&lt;/span&gt;&lt;span class="lnt"&gt; 9
+&lt;/span&gt;&lt;span class="lnt"&gt;10
+&lt;/span&gt;&lt;span class="lnt"&gt;11
+&lt;/span&gt;&lt;span class="lnt"&gt;12
+&lt;/span&gt;&lt;span class="lnt"&gt;13
+&lt;/span&gt;&lt;span class="lnt"&gt;14
+&lt;/span&gt;&lt;span class="lnt"&gt;15
+&lt;/span&gt;&lt;span class="lnt"&gt;16
+&lt;/span&gt;&lt;span class="lnt"&gt;17
+&lt;/span&gt;&lt;span class="lnt"&gt;18
+&lt;/span&gt;&lt;span class="lnt"&gt;19
+&lt;/span&gt;&lt;span class="lnt"&gt;20
+&lt;/span&gt;&lt;span class="lnt"&gt;21
+&lt;/span&gt;&lt;span class="lnt"&gt;22
+&lt;/span&gt;&lt;span class="lnt"&gt;23
+&lt;/span&gt;&lt;span class="lnt"&gt;24
+&lt;/span&gt;&lt;span class="lnt"&gt;25
+&lt;/span&gt;&lt;span class="lnt"&gt;26
+&lt;/span&gt;&lt;span class="lnt"&gt;27
+&lt;/span&gt;&lt;span class="lnt"&gt;28
+&lt;/span&gt;&lt;span class="lnt"&gt;29
+&lt;/span&gt;&lt;span class="lnt"&gt;30
+&lt;/span&gt;&lt;span class="lnt"&gt;31
+&lt;/span&gt;&lt;span class="lnt"&gt;32
+&lt;/span&gt;&lt;span class="lnt"&gt;33
+&lt;/span&gt;&lt;span class="lnt"&gt;34
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第一步：获取历史数据
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 从 data.binance.vision 下载 BTC/USDT 1分钟K线 + aggTrades
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 存成 parquet 格式
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第二步：构建特征
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → OBI（前5档订单簿不平衡）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → Microprice 偏差
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → Trade Flow Imbalance
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 资金费率（Binance API）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 1/5/15 分钟 VWAP 偏差、波动率
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第三步：标注 Label
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 预测未来 5 分钟 mid-price 涨跌（二分类）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 或预测涨跌幅（回归）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第四步：训练模型
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → LightGBM，walk-forward 验证（时间序列不能随机 split）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 观察 Rank IC 和方向准确率
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第五步：实验管理（接入 Qlib）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 每次实验自动归档到 MLflow
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 产出：params.pkl（模型）、pred.pkl（预测分数表）、ic.pkl 等
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第六步：选模型 + 上线
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 从 MLflow 里选出 ICIR 稳定的实验
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → OnlineToolR.reset_online_tag() 标记为在线模型
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 每根 K 线结束后调用 update_online_pred() 生成新预测分数
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第七步：纸交易验证（2-4 周）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 验证回测 IC vs 实盘 IC 的差距（差距 &amp;gt; 30% 说明有问题）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 验证手续费后是否还盈利
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; → 观察模型衰减速度
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;第八步：实盘（小仓位开始）
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h3 id="日线加密快速验证用-qlib-现成工具"&gt;日线加密（快速验证，用 Qlib 现成工具）
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nb"&gt;cd&lt;/span&gt; scripts/data_collector/crypto
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;python collector.py download_data &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --source_dir ~/.qlib/crypto_data/source/1d &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --start 2020-01-01 --end 2024-12-31 &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --interval 1d
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;hr&gt;
+&lt;h2 id="六实验产出详解"&gt;六、实验产出详解
+&lt;/h2&gt;&lt;h3 id="一次实验归档的文件"&gt;一次实验归档的文件
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt; 1
+&lt;/span&gt;&lt;span class="lnt"&gt; 2
+&lt;/span&gt;&lt;span class="lnt"&gt; 3
+&lt;/span&gt;&lt;span class="lnt"&gt; 4
+&lt;/span&gt;&lt;span class="lnt"&gt; 5
+&lt;/span&gt;&lt;span class="lnt"&gt; 6
+&lt;/span&gt;&lt;span class="lnt"&gt; 7
+&lt;/span&gt;&lt;span class="lnt"&gt; 8
+&lt;/span&gt;&lt;span class="lnt"&gt; 9
+&lt;/span&gt;&lt;span class="lnt"&gt;10
+&lt;/span&gt;&lt;span class="lnt"&gt;11
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;实验记录（MLflow）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├── params.pkl ← 训练好的 LightGBM 模型（决策树结构 + 权重）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├── dataset（对象） ← 特征配置和数据 pipeline
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├── pred.pkl ← 模型对测试集的打分结果（DataFrame）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├── label.pkl ← 测试集对应的真实涨跌幅
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;├── sig_analysis/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ ├── ic.pkl ← 每天的 IC 时间序列
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;│ └── ric.pkl ← 每天的 Rank IC 时间序列
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;└── portfolio_analysis/
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ├── report_normal.pkl ← 回测收益曲线、持仓记录
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; └── port_analysis.pkl ← Sharpe、最大回撤、年化收益
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h3 id="predpkl-的内容不是模型文件"&gt;pred.pkl 的内容（不是模型文件！）
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;span class="lnt"&gt;6
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; score
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;datetime instrument
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;2024-01-02 BTC/USDT 0.0312 ← 模型认为会涨 3.12%
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ETH/USDT -0.0089 ← 模型认为会跌 0.89%
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;2024-01-03 BTC/USDT 0.0156
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;...
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;params.pkl 才是真正的模型文件&lt;/strong&gt;，包含所有决策树结构。&lt;/p&gt;
+&lt;h3 id="关系"&gt;关系
+&lt;/h3&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;params.pkl（模型）+ 新的市场数据（特征）→ model.predict() → 输出新的预测分数
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;hr&gt;
+&lt;h2 id="七信号层与策略层分离核心设计思想"&gt;七、信号层与策略层分离（核心设计思想）
+&lt;/h2&gt;&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt; 1
+&lt;/span&gt;&lt;span class="lnt"&gt; 2
+&lt;/span&gt;&lt;span class="lnt"&gt; 3
+&lt;/span&gt;&lt;span class="lnt"&gt; 4
+&lt;/span&gt;&lt;span class="lnt"&gt; 5
+&lt;/span&gt;&lt;span class="lnt"&gt; 6
+&lt;/span&gt;&lt;span class="lnt"&gt; 7
+&lt;/span&gt;&lt;span class="lnt"&gt; 8
+&lt;/span&gt;&lt;span class="lnt"&gt; 9
+&lt;/span&gt;&lt;span class="lnt"&gt;10
+&lt;/span&gt;&lt;span class="lnt"&gt;11
+&lt;/span&gt;&lt;span class="lnt"&gt;12
+&lt;/span&gt;&lt;span class="lnt"&gt;13
+&lt;/span&gt;&lt;span class="lnt"&gt;14
+&lt;/span&gt;&lt;span class="lnt"&gt;15
+&lt;/span&gt;&lt;span class="lnt"&gt;16
+&lt;/span&gt;&lt;span class="lnt"&gt;17
+&lt;/span&gt;&lt;span class="lnt"&gt;18
+&lt;/span&gt;&lt;span class="lnt"&gt;19
+&lt;/span&gt;&lt;span class="lnt"&gt;20
+&lt;/span&gt;&lt;span class="lnt"&gt;21
+&lt;/span&gt;&lt;span class="lnt"&gt;22
+&lt;/span&gt;&lt;span class="lnt"&gt;23
+&lt;/span&gt;&lt;span class="lnt"&gt;24
+&lt;/span&gt;&lt;span class="lnt"&gt;25
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-fallback" data-lang="fallback"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;【信号层】LightGBM 模型
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 输入：特征（OBI、资金费率等）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 输出：每个标的的预测分数（实数，如 +0.73, -0.45）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 只回答&amp;#34;哪个更可能涨&amp;#34;，不管买多少、何时卖
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ↓ pred.pkl
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;【策略层】TopkDropoutStrategy（或自定义规则）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 输入：所有标的的预测分数
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 规则示例（加密短线）：
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; score &amp;gt; 0.6 → 开多仓，仓位 = score × 最大仓位
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; score &amp;lt; -0.6 → 开空仓
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 否则 → 不操作
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 输出：具体买卖指令（Order）
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ↓
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;【执行层】Executor + Exchange
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 模拟成交：手续费（Binance 0.05%）、滑点
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 记录每天持仓和盈亏
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; ↓
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;【评估层】PortAnaRecord
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; 输出：Sharpe、最大回撤、年化收益...
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;strong&gt;最大回撤是策略 + 执行层模拟出来的，不是模型本身产生的。&lt;/strong&gt;
+模型打分再准，策略设计不好（如全仓单一标的）回撤也会很大。&lt;/p&gt;
+&lt;h3 id="类比理解"&gt;类比理解
+&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;概念&lt;/th&gt;
+&lt;th&gt;类比&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;params.pkl&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;会打分的&amp;quot;分析师&amp;quot;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;pred.pkl&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;分析师写的历史打分报告&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;TopkDropoutStrategy&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;基金经理，决定怎么操作&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;Exchange&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;交易员，负责真实下单&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;PortAnaRecord&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;风控部门算出来的收益/风险报告&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="八常见坑"&gt;八、常见坑
+&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;坑&lt;/th&gt;
+&lt;th&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;手续费侵蚀&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;日内高频：0.05% × 每天 20 次 = 1% 成本，IC 必须够高才能覆盖&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Look-ahead bias&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;特征计算时用了&amp;quot;未来数据&amp;quot;，回测完美但实盘亏损&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;过拟合&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;订单簿数据噪声极大，walk-forward 验证是必须的，不能随机 split&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;市场微观结构变化&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;加密市场变化快，去年的模型今年往往失效，模型需持续更新&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;只选 IC 最高的模型&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;往往是过拟合。要选跨时间段都稳定的，而非单段最优&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="九关键判断标准"&gt;九、关键判断标准
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;IC &amp;gt; 0.03&lt;/strong&gt;：基准线，低于此无太大意义&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ICIR &amp;gt; 0.3&lt;/strong&gt;：IC 稳定性合格&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;IC 正值占比 &amp;gt; 55%&lt;/strong&gt;：大多数时候模型有效&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;回测 vs 实盘 IC 差距 &amp;lt; 30%&lt;/strong&gt;：说明没有严重的 look-ahead 或数据问题&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;纸交易 2-4 周后再上实盘&lt;/strong&gt;：观察真实信号质量&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;p&gt;&lt;em&gt;笔记整理自 Qlib 框架学习对话，2026-05-06&lt;/em&gt;&lt;/p&gt;</description></item><item><title>Qlib入门指南：第一章</title><link>https://blog.oic.im/p/qlib-intro-chapter1/</link><pubDate>Thu, 30 Apr 2026 01:03:36 +0800</pubDate><guid>https://blog.oic.im/p/qlib-intro-chapter1/</guid><description>&lt;blockquote&gt;
+&lt;p&gt;我最近发现了 &lt;a class="link" href="https://github.com/microsoft/qlib" target="_blank" rel="noopener"
+&gt;https://github.com/microsoft/qlib&lt;/a&gt; 可以用来跑预测，问了一位长期业余做量化交易的朋友“平胸”，他说这个对他有帮助，主要用来实现他看到的论文。我最近看着股票和加密货币涨涨跌跌，被套牢了3个多月没心绪去动，没方向，很迷茫不知道怎么操作，主要是有“损失厌恶”心理，否则这时候闭着眼睛看4小时K线的Bollinger Band，上卖下买做波段了。遇到这个Qlib，刚好可以学习“机器学习”、“深度学习”、“量化交易”，都是我想学习的东西，以下是我和Gemini聊出来的笔记。&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h1 id="-量化投资-ai-平台-qlib-入门指南"&gt;📑 量化投资 AI 平台 Qlib 入门指南
+&lt;/h1&gt;&lt;h2 id="1-什么是-qlib"&gt;1. 什么是 Qlib？
+&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Qlib&lt;/strong&gt; 是微软亚洲研究院（MSRA）开源的量化投资平台。它与传统回测框架最大的区别在于：它是**&amp;ldquo;AI 原生&amp;rdquo;**的。它将量化投资的整个流程（数据、特征、模型训练、回测）封装成了标准化的流水线，极大降低了利用深度学习做交易的门槛。&lt;/p&gt;
+&lt;h2 id="2-核心功能与分工"&gt;2. 核心功能与分工
+&lt;/h2&gt;&lt;p&gt;在生产环境中，Qlib 的典型角色是 &lt;strong&gt;&amp;ldquo;信号产生器&amp;rdquo;&lt;/strong&gt;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;研究阶段（Qlib 擅长）&lt;/strong&gt;：处理海量历史数据，训练极其复杂的 AI 模型（如 Transformer, LSTM），生成对未来股价的预测信号。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;实盘阶段（其他系统擅长）&lt;/strong&gt;：将 Qlib 产生的信号接入实盘柜台（如 VnPy、功夫交易），负责实际的下单、风控和撤单。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;理由&lt;/strong&gt;：将&amp;quot;大脑（预测）&amp;ldquo;与&amp;quot;手脚（执行）&amp;ldquo;分离，既保证了计算的高性能，也保证了实盘交易的稳定性。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="3-技术流派机器学习-vs-深度学习"&gt;3. 技术流派：机器学习 vs. 深度学习
+&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th style="text-align: left"&gt;特性&lt;/th&gt;
+&lt;th style="text-align: left"&gt;机器学习 (ML)&lt;/th&gt;
+&lt;th style="text-align: left"&gt;深度学习 (DL)&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td style="text-align: left"&gt;&lt;strong&gt;形象比喻&lt;/strong&gt;&lt;/td&gt;
+&lt;td style="text-align: left"&gt;经验丰富的老师傅&lt;/td&gt;
+&lt;td style="text-align: left"&gt;观察入微的天才少年&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style="text-align: left"&gt;&lt;strong&gt;逻辑&lt;/strong&gt;&lt;/td&gt;
+&lt;td style="text-align: left"&gt;依赖人工提取特征（如均线、换手率）&lt;/td&gt;
+&lt;td style="text-align: left"&gt;直接学习原始价格序列，自动提取特征&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style="text-align: left"&gt;&lt;strong&gt;优势&lt;/strong&gt;&lt;/td&gt;
+&lt;td style="text-align: left"&gt;逻辑清晰、可解释性强、计算速度快&lt;/td&gt;
+&lt;td style="text-align: left"&gt;上限极高，能捕捉肉眼无法察觉的规律&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style="text-align: left"&gt;&lt;strong&gt;硬件要求&lt;/strong&gt;&lt;/td&gt;
+&lt;td style="text-align: left"&gt;&lt;strong&gt;CPU + 大内存&lt;/strong&gt;&lt;/td&gt;
+&lt;td style="text-align: left"&gt;&lt;strong&gt;高性能 GPU (NVIDIA)&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;hr&gt;
+&lt;h2 id="4-硬件配置建议-以用户现有设备为例"&gt;4. 硬件配置建议 (以用户现有设备为例)
+&lt;/h2&gt;&lt;p&gt;量化研究对硬件的需求具有&amp;quot;分工性&amp;rdquo;：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;主力训练机（台式机/RTX 3070）&lt;/strong&gt;：显卡算力最强，负责运行复杂的深度学习模型（如 GATS, Transformer）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;特征工程机（笔记本/RTX 3060 + 32G内存）&lt;/strong&gt;：内存最大，负责全市场海量数据的预处理和机器学习模型（LightGBM）训练，防止内存溢出。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;策略编写机（M4 Mac Mini）&lt;/strong&gt;：能效比高，适合编写代码、查阅文档和远程管理计算任务。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;hr&gt;
+&lt;h2 id="5-给新手的行动清单"&gt;5. 给新手的行动清单
+&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;从机器学习起步&lt;/strong&gt;：优先尝试 Qlib 内置的 &lt;code&gt;Alpha158&lt;/code&gt; 因子库 + &lt;code&gt;LightGBM&lt;/code&gt; 模型，这是性价比最高、最易理解的路径。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;关注评价指标&lt;/strong&gt;：除了总收益，要重点学习 &lt;strong&gt;IC/IR&lt;/strong&gt;（预测能力）和 &lt;strong&gt;最大回撤&lt;/strong&gt;（风险控制）。&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;跑通示例&lt;/strong&gt;：先从沪深300（CSI300）小规模数据开始，熟悉 &lt;code&gt;qrun&lt;/code&gt; 命令和 &lt;code&gt;.yaml&lt;/code&gt; 配置文件。&lt;/li&gt;
+&lt;/ol&gt;
+&lt;hr&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;结语&lt;/strong&gt;：
+进入量化领域，Qlib 提供了一个强大的底层框架。它让投资者不再纠结于写底层代码，而是将精力集中在 &lt;strong&gt;&amp;ldquo;如何通过 AI 挖掘市场的超额收益&amp;rdquo;&lt;/strong&gt;。&lt;/p&gt;
+&lt;/blockquote&gt;</description></item><item><title>轻断食记：今日起笔</title><link>https://blog.oic.im/p/fasting-day-one/</link><pubDate>Fri, 27 Mar 2026 11:40:00 +0800</pubDate><guid>https://blog.oic.im/p/fasting-day-one/</guid><description>&lt;img src="https://blog.oic.im/p/fasting-day-one/cover.jpg" alt="Featured image of post 轻断食记：今日起笔" /&gt;&lt;p&gt;近来案牍劳形，家事与公事，日夕相催，稍得一隙，已是夜深。回首前些年，尚能每周赴馆，负重流汗，以抗阻无氧之法，稍遏血糖起伏，亦自觉精神较健。然今时境况不同，欲整整抽出一小时去健身房，常常只是纸上之约，终难践履。&lt;/p&gt;
+&lt;p&gt;前些日读医理文字，言及胰岛素抵抗，多与中年发福相牵，且其后患，不止衣带渐紧而已，尚关系体力、睡眠、与诸般慢性隐忧。读罢未敢轻忽，遂自昨日起，试行十六与八之轻断食：午时十二点至晚八点可进食，八点之后，直至次日午时，一概不食。&lt;/p&gt;
+&lt;p&gt;此法看似简约，行之却须心定。夜里馋意起时，须忍；晨间空腹醒来，须稳。其难处不在一日两日，而在日日如一，不为一时口腹所移。今日称重，得八十二点一公斤，姑记于此，算作起程之印。愿他日再看此页，不独数字有变，亦见意志渐坚。&lt;/p&gt;
+&lt;p&gt;人生至中途，最怕随波，最贵自持。此番轻断食，非为速成，亦非为争一时之轻重，不过是向身体偿还旧债，向自己讨回几分节制。自今以后，谨以平常心行之：该食时好好吃，不该食时安然忍。日久月深，或可见其微功。&lt;/p&gt;</description></item><item><title>Archives</title><link>https://blog.oic.im/archives/</link><pubDate>Sun, 06 Mar 2022 00:00:00 +0000</pubDate><guid>https://blog.oic.im/archives/</guid><description/></item><item><title>Links</title><link>https://blog.oic.im/links/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://blog.oic.im/links/</guid><description>&lt;p&gt;To use this feature, add &lt;code&gt;links&lt;/code&gt; section to frontmatter.&lt;/p&gt;
+&lt;p&gt;This page&amp;rsquo;s frontmatter:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;span class="lnt"&gt;6
+&lt;/span&gt;&lt;span class="lnt"&gt;7
+&lt;/span&gt;&lt;span class="lnt"&gt;8
+&lt;/span&gt;&lt;span class="lnt"&gt;9
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;links&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;title&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;GitHub&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;GitHub is the world&amp;#39;s largest software development platform.&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;website&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;https://github.com&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;image&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;title&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;TypeScript&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;description&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;TypeScript is a typed superset of JavaScript that compiles to plain JavaScript.&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;website&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;https://www.typescriptlang.org&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;image&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;ts-logo-128.jpg&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;code&gt;image&lt;/code&gt; field accepts both local and external images.&lt;/p&gt;</description></item><item><title>Search</title><link>https://blog.oic.im/search/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://blog.oic.im/search/</guid><description/></item></channel></rss>
